@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: solution_studio
+      POSTGRES_USER: solution_studio
+      POSTGRES_PASSWORD: solution_studio
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build: ./apps/api
+    environment:
+      DATABASE_URL: postgresql+psycopg://solution_studio:solution_studio@postgres:5432/solution_studio
+      ORCHESTRATOR_BASE_URL: http://host.docker.internal:18000
+    ports:
+      - "18080:8080"
+    depends_on:
+      - postgres
+
+  web:
+    build: ./apps/web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:18080
+    ports:
+      - "13000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

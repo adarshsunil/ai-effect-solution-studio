@@ -1,0 +1,5 @@
+import { Shell } from '@/components/shell';
+
+export default function BuilderPage() {
+  return <Shell><h1 className="text-3xl font-bold">Build a solution</h1><p className="mt-2 text-slate-600">Visual workflow canvas. React Flow integration will convert connected service nodes into orchestrator blueprints.</p><div className="mt-6 grid h-[560px] grid-cols-[280px_1fr_320px] gap-4"><aside className="rounded-2xl border bg-white p-4"><h2 className="font-semibold">Services</h2><p className="mt-2 text-sm text-slate-600">Drag services into the workflow.</p></aside><section className="rounded-2xl border border-dashed bg-white p-4"><h2 className="font-semibold">Workflow canvas</h2><div className="mt-8 rounded-xl bg-slate-100 p-6 text-center text-sm text-slate-500">React Flow canvas placeholder</div></section><aside className="rounded-2xl border bg-white p-4"><h2 className="font-semibold">Validation</h2><p className="mt-2 text-sm text-slate-600">Compatibility, missing inputs, parameters, and deployment readiness.</p></aside></div></Shell>;
+}
