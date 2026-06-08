@@ -1,15 +1,17 @@
-import './globals.css';
-import type { Metadata } from 'next';
+import "./globals.css";
+import { Shell } from "../components/shell";
 
-export const metadata: Metadata = {
-  title: 'AI-EFFECT Solution Studio',
-  description: 'Marketplace and visual workflow studio for AI-EFFECT services'
+export const metadata = {
+  title: "AI-EFFECT Solution Studio",
+  description: "Marketplace and workflow studio for AI-EFFECT services",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Shell>{children}</Shell>
+      </body>
     </html>
   );
 }
