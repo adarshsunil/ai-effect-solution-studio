@@ -1,3 +1,4 @@
+from fastapi.middleware.cors import CORSMiddleware
 from uuid import uuid4
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -9,6 +10,16 @@ from app.schemas.service import ServiceCreate, ServiceRead
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI-EFFECT Solution Studio API", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:13000",
+        "http://127.0.0.1:13000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
