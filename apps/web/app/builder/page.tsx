@@ -28,6 +28,9 @@ type Service = {
 export default function BuilderPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [validationResults, setValidationResults] = useState<string[]>([]);
+  const [deploymentResult, setDeploymentResult] = useState<any>(null);
+  const [submittingToOrchestrator, setSubmittingToOrchestrator] = useState(false);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([
     {
@@ -76,18 +79,122 @@ export default function BuilderPage() {
     ]);
   }
 
-  function validateWorkflow() {
-    const serviceNodes = nodes.filter((node) => node.id.startsWith("service-"));
+  async function submitToOrchestrator() {
+  setSubmittingToOrchestrator(true);
+  setDeploymentResult(null);
 
-    if (serviceNodes.length === 0) {
-      alert("Add at least one service to the workflow.");
+  const serviceNodes = nodes.filter((node) => node.id.startsWith("service-"));
+
+  if (serviceNodes.length === 0) {
+    alert("Add at least one service before submitting.");
+    setSubmittingToOrchestrator(false);
+    return;
+  }
+
+  const workflowNodes = serviceNodes.map((node) => {
+    const service = node.data.service as any;
+
+    return {
+      node_id: node.id,
+      service_id: service.id,
+      name: service.name,
+      container_name: service.container_name,
+      image: service.image,
+      proto_uri: service.proto_uri,
+      node_type: service.node_type || "MLModel",
+      operation_name: service.operation_name,
+      input_message_name: service.input_message_name || "Request",
+      output_message_name: service.output_message_name || "Response",
+      internal_host: service.internal_host || service.container_name,
+      internal_port: service.internal_port || "8080",
+    };
+  });
+
+  const validNodeIds = new Set(serviceNodes.map((node) => node.id));
+
+  const workflowEdges = edges
+    .filter((edge) => validNodeIds.has(edge.source) && validNodeIds.has(edge.target))
+    .map((edge) => ({
+      source: edge.source,
+      target: edge.target,
+    }));
+
+  const res = await fetch("http://localhost:18080/workflows/submit-to-orchestrator", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: "Solution Studio Workflow",
+      nodes: workflowNodes,
+      edges: workflowEdges,
+    }),
+  });
+
+  setSubmittingToOrchestrator(false);
+
+  if (!res.ok) {
+    const error = await res.text();
+    setDeploymentResult({
+      status: "failed",
+      error,
+    });
+    return;
+  }
+
+  const data = await res.json();
+setDeploymentResult(data);
+
+if (data.workflow_id) {
+  const existing = JSON.parse(localStorage.getItem("ai-effect-deployments") || "[]");
+
+  const next = [
+    {
+      workflow_id: data.workflow_id,
+      status: data.status || "submitted",
+      name: "Solution Studio Workflow",
+      created_at: new Date().toISOString(),
+    },
+    ...existing,
+  ];
+
+  localStorage.setItem("ai-effect-deployments", JSON.stringify(next));
+}
+}
+
+  function validateWorkflow() {
+  const results: string[] = [];
+
+  edges.forEach((edge) => {
+    const sourceNode = nodes.find((n) => n.id === edge.source);
+    const targetNode = nodes.find((n) => n.id === edge.target);
+
+    const sourceService = sourceNode?.data?.service as Service | undefined;
+    const targetService = targetNode?.data?.service as Service | undefined;
+
+    if (!sourceService || !targetService) {
       return;
     }
 
-    alert(
-      `Workflow draft contains ${serviceNodes.length} service node(s) and ${edges.length} connection(s). Compatibility validation comes next.`
-    );
+    if (sourceService.output_type === targetService.input_type) {
+      results.push(
+        `✓ ${sourceService.name} → ${targetService.name}`
+      );
+    } else {
+      results.push(
+        `❌ ${sourceService.name} → ${targetService.name}
+      Output: ${sourceService.output_type}
+      Input: ${targetService.input_type}`
+      );
+    }
+  });
+
+  if (results.length === 0) {
+    results.push("No workflow connections found.");
   }
+
+  setValidationResults(results);
+}
 
   return (
     <div className="page">
@@ -153,8 +260,13 @@ export default function BuilderPage() {
             <strong>Workflow canvas</strong>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={validateWorkflow} style={primaryButton}>
-                Validate workflow
+                  Validate workflow
               </button>
+
+              <button onClick={submitToOrchestrator} style={primaryButton}>
+                  {submittingToOrchestrator ? "Submitting..." : "Submit to WP3"}
+              </button>
+
               <button style={secondaryButton}>Save draft</button>
             </div>
           </div>
@@ -200,6 +312,62 @@ export default function BuilderPage() {
               <Info label="Output" value={selectedService.output_type} />
             </div>
           )}
+          <div style={{ marginTop: 30 }}>
+  <h3>Validation Results</h3>
+
+  {validationResults.length === 0 && (
+    <p style={{ color: "#667085" }}>
+      Run workflow validation.
+    </p>
+  )}
+
+  <div style={{ marginTop: 30 }}>
+  <h3>Deployment Result</h3>
+
+  {!deploymentResult && (
+    <p style={{ color: "#667085" }}>
+      Submit a validated workflow to the WP3 orchestrator.
+    </p>
+  )}
+
+  {deploymentResult && (
+    <div
+      style={{
+        padding: 12,
+        borderRadius: 12,
+        background: deploymentResult.status === "failed" ? "#fef3f2" : "#ecfdf3",
+        color: deploymentResult.status === "failed" ? "#b42318" : "#067647",
+        whiteSpace: "pre-line",
+      }}
+    >
+      {deploymentResult.workflow_id
+        ? `Workflow submitted\nID: ${deploymentResult.workflow_id}\nStatus: ${deploymentResult.status}`
+        : `Submission failed\n${deploymentResult.error}`}
+    </div>
+  )}
+</div>
+
+  <div style={{ display: "grid", gap: 10 }}>
+    {validationResults.map((result, index) => (
+      <div
+        key={index}
+        style={{
+          padding: 10,
+          borderRadius: 10,
+          background: result.startsWith("✓")
+            ? "#ecfdf3"
+            : "#fef3f2",
+          color: result.startsWith("✓")
+            ? "#067647"
+            : "#b42318",
+          whiteSpace: "pre-line",
+        }}
+      >
+        {result}
+      </div>
+    ))}
+  </div>
+</div>
         </aside>
       </div>
     </div>

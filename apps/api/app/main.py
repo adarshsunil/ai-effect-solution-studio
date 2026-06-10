@@ -6,6 +6,14 @@ from sqlalchemy.orm import Session
 from app.db import Base, engine, get_db
 from app.models.service import Service
 from app.schemas.service import ServiceCreate, ServiceRead
+from app.schemas.workflow_submit import WorkflowSubmitRequest
+from app.services.workflow_compiler import compile_to_wp3_payload
+from app.services.orchestrator_adapter import (
+    submit_to_orchestrator,
+    get_workflow_status,
+    get_workflow_tasks,
+)
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -21,6 +29,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.post("/workflows/compile")
+def compile_workflow(workflow: WorkflowSubmitRequest):
+    return compile_to_wp3_payload(workflow)
+
+
+@app.post("/workflows/submit-to-orchestrator")
+def submit_workflow_to_orchestrator(workflow: WorkflowSubmitRequest):
+    payload = compile_to_wp3_payload(workflow)
+    return submit_to_orchestrator(payload)
+
+
+@app.get("/orchestrator/workflows/{workflow_id}")
+def orchestrator_workflow_status(workflow_id: str):
+    return get_workflow_status(workflow_id)
+
+
+@app.get("/orchestrator/workflows/{workflow_id}/tasks")
+def orchestrator_workflow_tasks(workflow_id: str):
+    return get_workflow_tasks(workflow_id)
 
 @app.get("/health")
 def health():
@@ -51,6 +78,15 @@ def create_service(payload: ServiceCreate, db: Session = Depends(get_db)):
         version=payload.version,
         status="pending_review",
         trust_badge="Awaiting validation",
+        container_name=payload.container_name,
+        image=payload.image,
+        proto_uri=payload.proto_uri,
+        node_type=payload.node_type,
+        operation_name=payload.operation_name,
+        input_message_name=payload.input_message_name,
+        output_message_name=payload.output_message_name,
+        internal_host=payload.internal_host or payload.container_name,
+        internal_port=payload.internal_port,
     )
     db.add(service)
     db.commit()
@@ -101,43 +137,91 @@ def get_tasks(workflow_id: str):
 
 def seed_services(db: Session):
     examples = [
-        Service(
-            id="svc-grid-forecasting",
-            name="Grid Load Forecasting Service",
-            provider="AI-EFFECT Node",
-            category="Forecasting",
-            status="validated",
-            version="1.0.0",
-            description="Forecasts energy demand using time-series input data and produces forecast references for downstream services.",
-            input_type="Time-series DataReference",
-            output_type="Forecast DataReference",
-            trust_badge="Validated",
-        ),
-        Service(
-            id="svc-synthetic-data",
-            name="Synthetic Energy Data Generator",
-            provider="AI-EFFECT Node",
-            category="Synthetic Data",
-            status="validated",
-            version="0.9.0",
-            description="Generates synthetic energy datasets for experimentation, testing, and workflow prototyping.",
-            input_type="Configuration JSON",
-            output_type="Dataset DataReference",
-            trust_badge="TEF-ready",
-        ),
-        Service(
-            id="svc-anomaly-detection",
-            name="Grid Anomaly Detection Service",
-            provider="AI-EFFECT Node",
-            category="Monitoring",
-            status="experimental",
-            version="0.3.0",
-            description="Detects anomalies in grid measurements and produces event markers for validation workflows.",
-            input_type="Measurement DataReference",
-            output_type="Anomaly Report",
-            trust_badge="Experimental",
-        ),
-    ]
+    Service(
+        id="svc-pt-input-provider",
+        name="PT Input Provider",
+        provider="Portuguese Node",
+        category="File-Based Energy Pipeline",
+        status="validated",
+        version="1.0.0",
+        description="Provides configuration input for the Portuguese file-based energy pipeline.",
+        input_type="Workflow Start",
+        output_type="Configuration DataReference",
+        trust_badge="Validated",
+        container_name="input-provider",
+        image="input-provider:latest",
+        proto_uri="input_provider.proto",
+        node_type="MLModel",
+        operation_name="GetConfiguration",
+        input_message_name="Request",
+        output_message_name="Response",
+        internal_host="input-provider",
+        internal_port="8080",
+    ),
+    Service(
+        id="svc-pt-data-generator",
+        name="PT Data Generator",
+        provider="Portuguese Node",
+        category="File-Based Energy Pipeline",
+        status="validated",
+        version="1.0.0",
+        description="Generates energy data from pipeline configuration input.",
+        input_type="Configuration DataReference",
+        output_type="Energy Dataset DataReference",
+        trust_badge="Validated",
+        container_name="data-generator",
+        image="data-generator:latest",
+        proto_uri="data_generator.proto",
+        node_type="MLModel",
+        operation_name="GenerateData",
+        input_message_name="Request",
+        output_message_name="Response",
+        internal_host="data-generator",
+        internal_port="8080",
+    ),
+    Service(
+        id="svc-pt-data-analyzer",
+        name="PT Data Analyzer",
+        provider="Portuguese Node",
+        category="File-Based Energy Pipeline",
+        status="validated",
+        version="1.0.0",
+        description="Analyzes generated energy data and produces analysis results.",
+        input_type="Energy Dataset DataReference",
+        output_type="Analysis DataReference",
+        trust_badge="Validated",
+        container_name="data-analyzer",
+        image="data-analyzer:latest",
+        proto_uri="data_analyzer.proto",
+        node_type="MLModel",
+        operation_name="AnalyzeData",
+        input_message_name="Request",
+        output_message_name="Response",
+        internal_host="data-analyzer",
+        internal_port="8080",
+    ),
+    Service(
+        id="svc-pt-report-generator",
+        name="PT Report Generator",
+        provider="Portuguese Node",
+        category="File-Based Energy Pipeline",
+        status="validated",
+        version="1.0.0",
+        description="Generates final reports from analysis output.",
+        input_type="Analysis DataReference",
+        output_type="Report DataReference",
+        trust_badge="Validated",
+        container_name="report-generator",
+        image="report-generator:latest",
+        proto_uri="report_generator.proto",
+        node_type="MLModel",
+        operation_name="GenerateReport",
+        input_message_name="Request",
+        output_message_name="Response",
+        internal_host="report-generator",
+        internal_port="8080",
+    ),
+]
 
     for service in examples:
         db.merge(service)
